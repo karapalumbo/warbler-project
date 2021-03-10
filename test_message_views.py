@@ -49,7 +49,25 @@ class MessageViewTestCase(TestCase):
                                     password="testuser",
                                     image_url=None)
 
+        self.testuser_id = 0000
+        self.testuser.id = self.testuser_id
+
+        self.user1 = User.signup("user1", "user1@user1.com", "password1", None)
+        self.user1_id = 1111
+        self.user1.id = self.user1_id
+
+        self.user2 = User.signup("user2", "user2@user2.com", "password2", None)
+        self.user2_id = 2222
+        self.user2.id = self.user2_id
+
         db.session.commit()
+
+
+    def tearDown(self):
+        res = super().tearDown()
+        db.session.rollback()
+        return res
+
 
     def test_add_message(self):
         """Can use add a message?"""
@@ -71,3 +89,50 @@ class MessageViewTestCase(TestCase):
 
             msg = Message.query.one()
             self.assertEqual(msg.text, "Hello")
+
+    def test_add_message_invalid_user(self):
+        """Test that user not logged in can't add message."""
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess[CURR_USER_KEY] = 9999
+
+            resp = client.post("/messages/new", data={"text": "Cannot add"}, follow_redirects=True)
+            
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized", str(resp.data))
+
+    def test_delete_message(self):
+        """Testing message is deleted by user."""
+
+        m = Message(
+            id=0000,
+            text="testing",
+            user_id=self.testuser_id
+        )
+
+        db.session.add(m)
+        db.session.commit()
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess[CURR_USER_KEY] = self.testuser.id
+
+            resp = client.post("/messages/0000/delete", follow_redirects=True)
+            self.assertEqual(resp.status_code, 200)
+
+            message = Message.query.get(0000)
+            self.assertIsNone(message)
+
+
+    def test_delete_message_invalid_user(self):
+        """Test that user not logged in can't delete message."""
+
+        with app.test_client() as client:
+            with client.session_transaction() as sess:
+                sess[CURR_USER_KEY] = 9999
+
+            resp = client.post("/messages/0000/delete", data={"text": "Testing"}, follow_redirects=True)
+            
+            self.assertEqual(resp.status_code, 200)
+            self.assertIn("Access unauthorized", str(resp.data))
